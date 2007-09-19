@@ -1,6 +1,6 @@
 gmail_address: youraddress@gmail.com
 password: password
-to_address: your@gmail.com
+to_address: yourmobile@docomo.ne.jp
 wait: 300 
 thread:
 - Path: http://news21.2ch.net/test/read.cgi/slot/1190194691/
