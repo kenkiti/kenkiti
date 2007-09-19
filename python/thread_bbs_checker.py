@@ -7,6 +7,8 @@ from email.MIMEText import MIMEText
 from email.Header import Header
 from email.Utils import formatdate
 
+_VERSION = "0.1"
+
 class Logger:
     def _now(self):
         return datetime.datetime.now().strftime("%H:%M:%S")
