@@ -7,7 +7,8 @@ from email.MIMEText import MIMEText
 from email.Header import Header
 from email.Utils import formatdate
 
-_VERSION = "0.1"
+_VERSION = "0.2"
+ENCODING = "utf-8"
 
 class Logger:
     def _now(self):
@@ -19,222 +20,15 @@ class Logger:
         sys.stdout.flush()
 
 class Config:
-    path_to_config = 'config.yaml'
+    Path_to_config = 'config.yaml'
+    Path_to_temp = 'temp.yaml'
+
+    def load(self):
+        return yaml.load(open(self.Path_to_config))
+        
     def save(self, dat):
         dat = yaml.dump(dat, default_flow_style=False)
         open(self.path_to_config,'w').write(dat)
-
-    def load(self):
-        return yaml.load(open(self.path_to_config))
-
-class Reader:
-    thread = None
-    
-    def set_thread(self, path, last_modified, dat_range, line):
-        search_2ch = re.compile('2ch.net')
-        search_jbbs = re.compile('jbbs.livedoor.jp')
-
-        if search_2ch.search(path):
-            self.thread = Nichan()
-        elif search_jbbs.search(path):
-            self.thread = Jbbs()
-        else:
-            raise
-
-        self.thread.Path = path
-        self.thread.Last_Modified = last_modified
-        self.thread.Range = dat_range
-        self.thread.Line = line
-
-    def status_message(self, number):
-        messages = {
-            200:'スレ取得',
-            206:'差分取得',
-            302:'DAT落ち',
-            304:'更新なし',
-            404:'File Not Found',
-            416:'なんかエラーだって(レスあぼーん?)',
-            }
-        return messages[number]
-
-    def get(self):
-        header = {'User-Agent': 'Monazilla/1.00',
-                  'Accept-Encoding': 'gzip'}
-        return self.thread.get(None, header)
-
-class Jbbs:
-    Path = None
-    Status = 0
-    Title = None
-    Last_Modified = None
-    Range = 0
-    Line = 0
-
-    def _convert_path_to_dat_from_url(self, url):
-        "http://jbbs.livedoor.jp/bbs/rawmode.cgi/カテゴリ/板番号/DAT-ID/"
-        "http://jbbs.livedoor.jp/bbs/read.cgi/otaku/7775/1189723149/"
-        path = re.compile('http://(?P<host>[^\/]+)/([^\/]+)/([^\/]+)/(?P<category>[^\/]+)/(?P<board>[^\/]+)/(?P<datid>[^\/]+)/')
-        m = path.search(url)
-        return "http://%(host)s/bbs/rawmode.cgi/%(category)s/%(board)s/%(datid)s" % {
-            'host': m.group('host'),
-            'category': m.group('category'),
-            'board': m.group('board'),
-            'datid': m.group('datid')}
-
-    def _convert_dat(self, dat):
-        # 取得 URL http://jbbs.livedoor.jp/bbs/rawmode.cgi/カテゴリ/板番号/DAT-ID/
-        # 文字コード EUC-JP
-        # 行フォーマット 番号<>名前<>メール<>日付(ID)<>メッセージ<>スレッドタイトル<>
-        dat = unicode(dat, 'euc-jp', 'ignore').encode('utf-8')
-        dat = dat.strip("\n").split("\n")[1:]
-        res = []
-        for line in dat:
-            num, name, mail, date, message, title, null = line.split("<>")
-            res.append({'number':int(num), 'name': name, 'mail': mail, 'date': date, 'message': self._convert_message(message)})
-        return  res
-
-
-    def _convert_message(self, message):
-        br = re.compile("<br>")
-        del_tag = re.compile("<.+?>")
-        message = br.sub('\n', message)
-        message = del_tag.sub('', message)
-        message = message.replace("&amp;","&"); # &
-        message = message.replace("&lt;","<"); # <
-        message = message.replace("&gt;",">"); # >
-        message = message.replace("&nbsp;"," "); # 半角空白
-        return message
-
-    def _get_title(self, dat):
-        dat = unicode(dat, 'euc-jp', 'ignore').encode('utf-8')
-        line = dat.strip("\n").split("\n")[0]
-        num, name, mail, date, message, title, null = line.split("<>")
-        return title
-
-    def _get_last_number(self, dat):
-        #dat = unicode(dat, 'euc-jp').encode('utf-8')
-        dat = unicode(dat, 'euc_jp','ignore').encode('utf-8')
-        dat = dat.strip("\n").split("\n")
-        line = dat[-1:][0]
-        num, name, mail, date, message, title, null = line.split("<>")
-        return int(num)
-
-    def get(self, data, header):
-        url = self.Path 
-        if not url: return None
-
-        url = self._convert_path_to_dat_from_url(url)
-        if int(self.Line) > 0:
-            url = "%s/%s-" % (url, self.Line)
-        (scheme, location, objpath, param, query, fid) = \
-                 urlparse.urlparse(url, 'http')
-        con = httplib.HTTPConnection(location)
-        con.request('GET', objpath, data, header)
-
-        response = con.getresponse()
-        self.Status = response.status
-        self.Last_Modified =  response.getheader('Last-Modified', None)
-
-        if response.status != 200 and response.status != 206:
-            return None
-
-        dat = response.read()
-        if response.getheader('Content-Encoding', None)=='gzip':
-            gzfile = StringIO.StringIO(dat)
-            gzstream = gzip.GzipFile(fileobj=gzfile)
-            dat = gzstream.read()
-
-        last_number = self._get_last_number(dat)
-        if self.Range == 0: self.Title = self._get_title(dat)
-        if last_number > self.Line:
-            self.Line = last_number
-            res = self._convert_dat(dat)
-        else:
-            self.Status = 304
-            res = None
-
-        return res
-    
-class Nichan:
-    Path = None
-    Status = 0
-    Title = None
-    Last_Modified = None
-    Range = 0
-    Line = 0
-    
-    def _convert_path_to_dat_from_url(self, url):
-        path = re.compile('http://(?P<host>[^\/]+)/([^\/]+)/([^\/]+)/(?P<board>[^\/]+)/(?P<thread>[^\/]+)/')
-        m = path.search(url)
-        return "http://%(host)s/%(board)s/dat/%(thread)s.dat" % {
-            'host': m.group('host'),
-            'board': m.group('board'),
-            'thread': m.group('thread')}
-
-    def _convert_dat(self, dat):
-        # 文字コード Shift-jis
-        # 行フォーマット 名前<>メール欄<>日付、ID<>本文<>スレタイトル(1行目のみ存在する)\n
-        dat = unicode(dat, 'cp932').encode('utf-8')
-        dat = dat.strip("\n").split("\n")
-        res = []
-        number = self.Line - len(dat)
-        for line in dat:
-            name, mail, date, message, thread = line.split("<>")
-            number += 1
-            res.append({'number': number, 'name': name, 'mail': mail, 'date': date, 'message': self._convert_message(message)})
-        return res
-
-    def _convert_message(self, message):
-        br = re.compile("<br>")
-        del_tag = re.compile("<.+?>")
-        message = br.sub('\n', message)
-        message = del_tag.sub('', message)
-        message = message.replace("&amp;","&"); # &
-        message = message.replace("&lt;","<"); # <
-        message = message.replace("&gt;",">"); # >
-        message = message.replace("&nbsp;"," "); # 半角空白
-        return message
-
-    def _get_title(self, dat):
-        dat = unicode(dat, 'cp932').encode('utf-8')
-        line = dat.strip("\n").split("\n")[0]
-        name, mail, date, message, title = line.split("<>")
-        return title
-
-    def get(self, data, header):
-        url = self.Path
-        if not url: return None
-        url = self._convert_path_to_dat_from_url(url)
-
-        if self.Last_Modified:
-            header['If-Modified-Since'] = self.Last_Modified
-            header['Range'] = "bytes=%d-" % self.Range
-            # If specified 'Last-Modified' header exist, remove 'Accept-Encoding: gzip' from Header.
-            del header['Accept-Encoding']
-
-        (scheme, location, objpath, param, query, fid) = \
-                 urlparse.urlparse(url, 'http')
-        con = httplib.HTTPConnection(location)
-        con.request('GET', objpath, data, header)
-        response = con.getresponse()
-        self.Status = response.status
-        self.Last_Modified = response.getheader('Last-Modified', None)
-
-        if response.status != 200 and response.status != 206:
-            return None
-
-        dat = response.read()
-        if response.getheader('Content-Encoding', None)=='gzip':
-            gzfile = StringIO.StringIO(dat)
-            gzstream = gzip.GzipFile(fileobj=gzfile)
-            dat = gzstream.read()
-        length = len(dat)
-        self.Line += dat.count("\n")
-        res = self._convert_dat(dat)
-        if self.Range == 0: self.Title = self._get_title(dat)
-        self.Range += length#len(dat)
-
-        return res
 
 class Gmail:
     address = None
@@ -256,90 +50,394 @@ class Gmail:
         s.sendmail(self.address, [to_addr], msg.as_string())
         s.close()
 
-def autopilot():
-    c = Config()
-    config = c.load()
+class Reader:
+    bbs = None
+    
+    def set_thread(self, path=None, etag=None, last_modified=None, dat_range=None, line=0, live=True):
+        search_2ch = re.compile('2ch.net')
+        search_jbbs = re.compile('jbbs.livedoor.jp')
+
+        if search_2ch.search(path):
+            self.bbs = Nichan()
+        elif search_jbbs.search(path):
+            self.bbs = Jbbs()
+        else:
+            raise
+
+        self.bbs.Path = path
+        self.bbs.Live = live
+        self.bbs.ETag = etag
+        self.bbs.Last_Modified = last_modified
+        self.bbs.Range = dat_range
+        self.bbs.Line = line
+
+    def get_thread(self):
+        return self.bbs.get(None)
+
+    def status_message(self, number):
+        messages = {
+            200:'スレ取得',
+            206:'差分取得',
+            302:'DAT落ち',
+            304:'更新なし',
+            404:'ファイルがないよ',
+            416:'なんかエラーだって(レスあぼーん)',
+            }
+        return messages[number]
+
+class ThreadBBS:
+    Title = None
+    Header = {'User-Agent': 'Monazilla/1.00',
+              'Accept-Encoding': 'gzip'}
+
+    Path = None
+    Last_Modified = None
+    Range = 0
+    Line = 0
+    ETag = None
+    Live = True
+
+    def _dat2html(self, dat):
+        br = re.compile("<br>")
+        del_tag = re.compile("<.+?>")
+        dat = br.sub('\n', dat)
+        dat = del_tag.sub('', dat)
+        dat = dat.replace("&amp;","&"); # &
+        dat = dat.replace("&lt;","<"); # <
+        dat = dat.replace("&gt;",">"); # >
+        dat = dat.replace("&nbsp;"," "); # half-width space
+        return dat
+
+    def _dat2time(self, filename):
+        # UnixDateDelta = 25569
+        # posix_timestamp = (int(filename[:-4]) - 9 * 60)/(24*60*60) + UnixDateDelta
+        posix_timestamp = int(filename[:-4])
+        return datetime.datetime.fromtimestamp(posix_timestamp)#.strftime("%Y/%m/%d %H:%M:%S")
+
+    def _timedelta(self, now, date):
+        delta = now - date
+        return delta.days + float(delta.seconds) / (24 * 60 * 60)
+
+class Jbbs(ThreadBBS):
+    # Dat URL: http://jbbs.livedoor.jp/bbs/rawmode.cgi/(category)/(board_no)/(DAT-ID)/
+    # CharCode: EUC-JP
+    # LineFormat: Number<>Name<>Mail<>Date(ID)<>Message<>Thread Title<>
+    def _convert_path_to_dat_from_url(self, url):
+        path = re.compile('http://(?P<host>[^\/]+)/([^\/]+)/([^\/]+)/(?P<category>[^\/]+)/(?P<board>[^\/]+)/(?P<datid>[^\/]+)/')
+        m = path.search(url)
+        return "http://%s/bbs/rawmode.cgi/%s/%s/%s" % (
+            m.group('host'), m.group('category'), m.group('board'), m.group('datid'))
+
+    def _convert_dat(self, dat):
+        dat = unicode(dat, 'euc-jp', 'ignore').encode(ENCODING)
+        dat = dat.strip("\n").split("\n")[1:]
+        ret = []
+        for line in dat:
+            num, name, mail, date, message, title, null = line.split("<>")
+            ret.append({
+                'number':int(num), 'name': name,
+                'mail': mail, 'date': date, 'message': self._dat2html(message)})
+        return  ret
+
+    def _get_title(self, dat):
+        dat = unicode(dat, 'euc-jp', 'ignore').encode(ENCODING)
+        line = dat.strip("\n").split("\n")[0]
+        num, name, mail, date, message, title, null = line.split("<>")
+        return title
+
+    def _get_last_number(self, dat):
+        dat = unicode(dat, 'euc-jp','ignore').encode(ENCODING)
+        dat = dat.strip("\n").split("\n")
+        line = dat[-1:][0]
+        num, name, mail, date, message, title, null = line.split("<>")
+        return int(num)
+
+    def get(self, data):
+        if not self.Path: return None
+        url = self._convert_path_to_dat_from_url(self.Path)
+        if int(self.Line) > 0:
+            url = "%s/%s-" % (url, self.Line)
+        header = self.Header.copy()
+
+        (scheme, location, objpath, param, query, fid) = \
+                 urlparse.urlparse(url, 'http')
+        con = httplib.HTTPConnection(location)
+        con.request('GET', objpath, data, header)
+
+        response = con.getresponse()
+        self.Last_Modified =  response.getheader('Last-Modified', None)
+        self.ETag = response.getheader('ETag', None)
+
+        if response.status != 200 and response.status != 206:
+            return response.status, None
+
+        dat = response.read()
+        if response.getheader('Content-Encoding', None)=='gzip':
+            gzfile = StringIO.StringIO(dat)
+            gzstream = gzip.GzipFile(fileobj=gzfile)
+            dat = gzstream.read()
+
+        if self.Line == 0:
+            self.Title = self._get_title(dat)
+
+        last_number = self._get_last_number(dat)
+        if last_number > self.Line:
+            self.Line = last_number
+            if self.Line >= 1000 or response.status == 302 or response.status == 404:
+                self.Live = False
+            return response.status, self._convert_dat(dat)
+        else:
+            return 304, None
+
+class Nichan(ThreadBBS):
+    # Dat URL: http://(host)/(board)/dat/(dat-id).dat
+    # Char Code: Shift-jis
+    # Line Format: Name<>Mail<>Date、ID<>Message<>Thread Title(exist only first line.)
+
+    def _convert_path_to_dat_from_url(self, url):
+        path = re.compile('http://(?P<host>[^\/]+)/([^\/]+)/([^\/]+)/(?P<board>[^\/]+)/(?P<thread>[^\/]+)/')
+        m = path.search(url)
+        return "http://%s/%s/dat/%s.dat" % (
+            m.group('host'), m.group('board'), m.group('thread'))
+
+    def _convert_dat(self, dat):
+        dat = unicode(dat, 'cp932').encode(ENCODING)
+        dat = dat.strip("\n").split("\n")
+        res = []
+        number = self.Line - len(dat)
+        for line in dat:
+            name, mail, date, message, thread = line.split("<>")
+            number += 1
+            res.append({
+                'number': number, 'name': name,
+                'mail': mail, 'date': date, 'message': self._dat2html(message)})
+        return res
+
+    def _get_title(self, dat):
+        dat = unicode(dat, 'cp932').encode(ENCODING)
+        line = dat.strip("\n").split("\n")[0]
+        name, mail, date, message, title = line.split("<>")
+        return title
+
+    def get(self, data):
+        """ the DAT file and status code are returned.
+        """
+        if not self.Path: return None
+        url = self._convert_path_to_dat_from_url(self.Path)
+        header = self.Header.copy()
+
+        if self.Last_Modified:
+            header['If-Modified-Since'] = self.Last_Modified
+            header['If-None-Match'] = self.ETag
+            header['Range'] = "bytes=%d-" % self.Range
+            # If specified 'Range' header exists,
+            # remove 'Accept-Encoding: gzip' from header.
+            del header['Accept-Encoding']
+
+        (scheme, location, objpath, param, query, fid) = \
+                 urlparse.urlparse(url, 'http')
+        con = httplib.HTTPConnection(location)
+        con.request('GET', objpath, data, header)
+        response = con.getresponse()
+        self.Last_Modified = response.getheader('Last-Modified', None)
+        self.ETag = response.getheader('ETag', None)
+
+        if response.status == 302 or response.status == 404:
+            self.Live = False
+            return response.status, None
+        elif response.status != 200 and response.status != 206:
+            return response.status, None
+            
+        dat = response.read()
+        if response.getheader('Content-Encoding', None)=='gzip':
+            gzfile = StringIO.StringIO(dat)
+            gzstream = gzip.GzipFile(fileobj=gzfile)
+            dat = gzstream.read()
+        if self.Line == 0:
+            self.Title = self._get_title(dat)
+        self.Range += len(dat)
+        self.Line += dat.count("\n")
+        if self.Line >= 1000:
+            self.Live = False
+
+        return response.status, self._convert_dat(dat)
+
+    def get_power_thread(self, board_url, keyword):
+        """ The thread which is include keyword and
+        the most power in the bulliten board is returned."""
+        data = None
+        header = self.Header.copy()
+        url = board_url + "subject.txt"
+
+        (scheme, location, objpath, param, query, fid) = \
+                 urlparse.urlparse(url, 'http')
+        con = httplib.HTTPConnection(location)
+        con.request('GET', objpath, data, header)
+        response = con.getresponse()
+
+        dat = response.read()
+        if response.getheader('Content-Encoding', None)=='gzip':
+            gzfile = StringIO.StringIO(dat)
+            gzstream = gzip.GzipFile(fileobj=gzfile)
+            dat = gzstream.read()
+
+        num = re.compile("\((\d+?)\)$")
+        key = re.compile(keyword)
+        now = datetime.datetime.now()
+        power_list = []
+        for line in dat.strip("\n").split("\n"):
+            line = line.split("<>")
+
+            title = unicode(line[1], "cp932", "ignore").encode(ENCODING)
+            count = num.search(title).group(1)
+            if int(count) == 1001:
+                continue
+
+            if not key.search(title):
+                continue
+
+            print title
+            create_date = self._dat2time(line[0])
+            power = float(count) / self._timedelta(now, create_date)
+            power_list.append((line, power))
+
+        if not power_list:
+            return None
+
+        power_list.sort(lambda x,y: cmp(y[1],x[1]))
+        return power_list[0][0][0]
+
+
+def visit_thread(t):
     reader = Reader()
     logger = Logger()
+    
+    flg_init_thread = False
+    flg_get_dat = False
+    message = ""
 
-    messages = ""
-    for t in config['thread']:
-        t.setdefault('Last-Modified', None)
-        t.setdefault('Range', 0)
-        t.setdefault('Line', 0)
-        t.setdefault('Title', None)
-        t.setdefault('Name', None)
+    if not t['Live']:
+        #logger.info("スキップ:%s" % t['Title'])
+        return ""
 
-        flg_init_thread = False
-        flg_get_dat = False
-        message = ""
+    reader.set_thread(
+        path=t['Path'],
+        last_modified=t['Last-Modified'],
+        dat_range=t['Range'],
+        line=t['Line'], live=t['Live'], etag=t['ETag']
+        )
 
-        reader.set_thread(t['Path'], t['Last-Modified'], t['Range'], t['Line'])
-        dat = reader.get()
-        if reader.thread.Title:
-            flg_init_thread = True
-            t['Title'] = reader.thread.Title
+    status, dat = reader.get_thread()
+    if reader.bbs.Title:
+        flg_init_thread = True
+        t['Title'] = reader.bbs.Title
 
-        if reader.thread.Status == 200 or reader.thread.Status == 206:
-            flg_get_dat = True
-            t['Last-Modified'] = reader.thread.Last_Modified
-            t['Range'] = reader.thread.Range
-            t['Line'] = reader.thread.Line
+    if status == 200 or status == 206:
+        flg_get_dat = True
+        t['Last-Modified'] = reader.bbs.Last_Modified
+        t['ETag'] = reader.bbs.ETag
+        t['Range'] = reader.bbs.Range
+        t['Line'] = reader.bbs.Line
+    t['Live'] = reader.bbs.Live
 
-        if reader.thread.Status == 416:
-            t['Range'] = 0
+    if status == 416:
+        t['Range'] = 0
 
-        # The log message is displayed.
-        msg = "%s:%s" % (
-            reader.status_message(reader.thread.Status), t['Title'])
-        logger.info(msg)
+    # The log message is displayed.
+    logger.info("%s:%s" % (reader.status_message(status), t['Title']))
 
-        if flg_init_thread == True or flg_get_dat == False:
-            continue
+    if flg_init_thread == True or flg_get_dat == False:
+        return ""
 
-        # Create message
-        if t['Name']:
-            name = re.compile(t['Name'])
-            for d in dat:
-                if not name.search(d['name']):
-                    continue
-                message += create_message(d['number'], d['message'])
-        else:
-            for d in dat:
-                message += create_message(d['number'], d['message'])
-        logger.info('最終書込:%s レス取得数:%d' % (dat[-1]['date'], len(dat)))
-        messages += create_messages(t['Title'], message)
+    # composes a message from data.
+    if t['Name']:
+        name = re.compile(t['Name'])
+        for d in dat:
+            if not name.search(d['name']):
+                continue
+            message += "\n%d %s" % (d['number'], d['message'])
+    else:
+        for d in dat:
+            message += "\n%d %s" % (d['number'], d['message'])
+    logger.info('最終書込:%s レス取得数:%d' % (dat[-1]['date'], len(dat)))
+    if message == "": return ""
+    return "-------------------\n%s\n-------------------\n%s" % (t['Title'], message)
 
-    c.save(config)
+def send_mail(message):
+    config = Config().load()
+    logger = Logger()
 
-    if messages:
-        mail = Gmail()
-        mail.address = config['gmail_address']
-        mail.password = config['password']
-        subject = u'新着レスがあります'.encode('ISO-2022-JP', 'ignore')
-        message = unicode(messages, 'utf-8').encode('ISO-2022-JP', 'ignore')
+    mail = Gmail()
+    mail.address = config['gmail_address']
+    mail.password = config['password']
+    subject = u'新着レスがあります'.encode('ISO-2022-JP', 'ignore')
+    message = unicode(message, ENCODING).encode('ISO-2022-JP', 'ignore')
+    try:
         mail.send_mail(config['to_address'], subject, message)
+    except:
+        logger.info("メール送信に失敗しました。(%s)" % str(sys.exc_info()[0]))
+    else:
         logger.info("メールを送信しました。")
 
-    logger.info("%d秒待機" % config['wait'])
-    time.sleep(config['wait'])
+def autopilot():
+    def get_value(c, key):
+        if c.has_key(key):
+            return c[key]
+        else:
+            return None
 
-def create_message(number, message):
-    msg = """
-%d %s
-""" % (number, message)
-    return msg
+    # initialize
+    config = Config().load()
+    logger = Logger()
+    boards, threads = [], []
 
-def create_messages(title, message):
-    if message == "": return ""
-    msg = """
--------------------
-%s
--------------------
-%s
-""" % (title, message)
-    return msg
+    if config.has_key('board'):
+        for c in config['board']:
+            boards.append({
+                'Path': c['Path'],
+                'Name': get_value(c, 'Name'),
+                'Keyword': get_value(c,'Keyword'),
+                'Title': None,
+                'Last-Modified': None,
+                'Line': 0, 'Range': 0, 'ETag': None, 'Live': True,
+                })
+
+    if config.has_key('thread'):
+        for c in config['thread']:
+            threads.append({
+                'Path': c['Path'],
+                'Name': get_value(c, 'Name'),
+                'Title': None,
+                'Last-Modified': None,
+                'Line': 0,
+                'Range': 0,
+                'ETag': None,
+                'Live': True,
+                })
+
+    # main routine
+    while True:
+        messages = ""
+        for t in threads:
+            messages += visit_thread(t)
+
+        ni = Nichan()
+        for board in boards:
+            dat = ni.get_power_thread(board['Path'], board['Keyword'].encode(ENCODING))
+            print dat
+
+        # The message is sent with mail.
+        if messages:
+            if send_mail(messages):
+
+        logger.info("%d秒待機" % config['wait'])
+        time.sleep(config['wait'])
+    
+def _test():
+    c = Nichan()
+    print c.get_power_thread("http://news21.2ch.net/slot/", "(ｽﾛ|スロ)板住民の(ﾈﾄﾗｼﾞ|ネトラジ).+隔離")
+    while True:
+        autopilot()
 
 if __name__ == '__main__':
-    while True:
-        msg = autopilot()
+    autopilot()
