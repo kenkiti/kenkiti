@@ -1,0 +1,10 @@
+2007-09-21  Tadashi Inoue  <nrg27943@gmail.com>
+
+	* thread_bbs_checker.py: ver 0.2 作成
+	YY kakiko に対応。subject.txtを取得して、各スレの勢いを計算し
+	一番勢いのあるスレッドを取得する関数作成（作成途中）
+
+2007-09-19  Tadashi Inoue  <nrg27943@gmail.com>
+
+	* thread_bbs_checker.py: ver 0.1 作成
+	

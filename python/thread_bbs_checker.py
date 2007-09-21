@@ -54,13 +54,16 @@ class Reader:
     bbs = None
     
     def set_thread(self, path=None, etag=None, last_modified=None, dat_range=None, line=0, live=True):
-        search_2ch = re.compile('2ch.net')
-        search_jbbs = re.compile('jbbs.livedoor.jp')
+        search_2ch = re.compile('2ch\.net')
+        search_jbbs = re.compile('jbbs\.livedoor\.jp')
+        search_yykakiko = re.compile('yy\d+\.\d+\.kg')
 
         if search_2ch.search(path):
             self.bbs = Nichan()
         elif search_jbbs.search(path):
             self.bbs = Jbbs()
+        elif search_yykakiko.search(path):
+            self.bbs = Nichan()
         else:
             raise
 
@@ -427,9 +430,8 @@ def autopilot():
             print dat
 
         # The message is sent with mail.
-        if messages:
-            if send_mail(messages):
-
+        #if messages: send_mail(messages):
+                    
         logger.info("%d秒待機" % config['wait'])
         time.sleep(config['wait'])
     
