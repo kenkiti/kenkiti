@@ -1,6 +1,7 @@
 #! -*- coding: utf-8 -*-
 import os, sys, yaml, datetime, time
 import httplib, urlparse, re, gzip, StringIO
+from urlparse import urljoin
 
 import smtplib
 from email.MIMEText import MIMEText
@@ -11,10 +12,11 @@ __version__ = "0.3"
 _encoding = "utf-8"
 
 try:
-    import Growls
-    _is_growl_installed = True
+    import Growl
 except ImportError:
     _is_growl_installed = False
+else:
+    _is_growl_installed = True
 
 class BearNotify:
     _g = None
@@ -45,7 +47,6 @@ class Logger:
 
 class Config:
     Path_to_config = 'config.yaml'
-    Path_to_temp = 'temp.yaml'
 
     def load(self):
         return yaml.load(open(self.Path_to_config))
@@ -150,6 +151,7 @@ class Jbbs(ThreadBBS):
     # CharCode: EUC-JP
     # LineFormat: Number<>Name<>Mail<>Date(ID)<>Message<>Thread Title<>
     def _convert_path_to_dat_from_url(self, url):
+        if url[-3:] == "dat": return url
         path = re.compile('http://(?P<host>[^\/]+)/([^\/]+)/([^\/]+)/(?P<category>[^\/]+)/(?P<board>[^\/]+)/(?P<datid>[^\/]+)/')
         m = path.search(url)
         return "http://%s/bbs/rawmode.cgi/%s/%s/%s" % (
@@ -222,10 +224,14 @@ class Nichan(ThreadBBS):
     # Line Format: Name<>Mail<>Date、ID<>Message<>Thread Title(exist only first line.)
 
     def _convert_path_to_dat_from_url(self, url):
+        if url[-3:] == "dat": return url
         path = re.compile('http://(?P<host>[^\/]+)/([^\/]+)/([^\/]+)/(?P<board>[^\/]+)/(?P<thread>[^\/]+)/')
         m = path.search(url)
         return "http://%s/%s/dat/%s.dat" % (
             m.group('host'), m.group('board'), m.group('thread'))
+
+    def create_path_to_dat(self, board_url, dat_file):
+        return urljoin(board_url, "dat/%s" % dat_file)
 
     def _convert_dat(self, dat):
         dat = unicode(dat, 'cp932').encode(_encoding)
@@ -352,10 +358,6 @@ def visit_thread(t):
     flg_get_dat = False
     message = ""
 
-    if not t['Live']:
-        #logger.info("スキップ:%s" % t['Title'])
-        return ""
-
     reader.set_thread(
         path=t['Path'],
         last_modified=t['Last-Modified'],
@@ -404,15 +406,12 @@ def visit_thread(t):
     logger.info('最終書込:%s レス取得数:%d' % (dat[-1]['date'], len(dat)))
     if message == "": return ""
 
-    #message = "-------------------\n%s\n-------------------\n%s" % (title, message)
     return message
 
 def text_wrapper(number, message):
 #     import textwrap
-#     wrapper = textwrap.TextWrapper(initial_indent="%4d " % number, subsequent_indent=" "*7, width=20)
-#     s = wrapper.fill(unicode(message,"utf-8")) + "\n"
-#     print s
-#     return s
+#     wrapper = textwrap.TextWrapper(initial_indent="%4d " % number, subsequent_indent=" "*7, width=30)
+#     return wrapper.fill(unicode(message,"utf-8")) + "\n"
     return "\n%d %s" % (number, message)
 
 def send_mail(title, message):
@@ -431,7 +430,7 @@ def send_mail(title, message):
     else:
         logger.info("メールを送信しました。")
 
-def autopilot():
+def run():
     def get_value(c, key):
         if c.has_key(key):
             return c[key]
@@ -443,65 +442,85 @@ def autopilot():
     logger = Logger()
     boards, threads = [], []
 
-    if config.has_key('board'):
-        for c in config['board']:
-            print config['board']
-            boards.append({
-                'Path': c['Path'],
-                'Name': get_value(c, 'Name'),
-                'Thread': get_value(c,'Thread'),
+    if config.has_key('thread'):
+        for c in config['thread']:
+            threads.append({
+                'Path': c['path'],
+                'Name': get_value(c, 'name'),
                 'Title': None,
                 'Last-Modified': None,
                 'Line': 0, 'Range': 0, 'ETag': None, 'Live': True,
                 })
 
-    if config.has_key('thread'):
-        for c in config['thread']:
-            threads.append({
-                'Path': c['Path'],
-                'Name': get_value(c, 'Name'),
+    if config.has_key('board'):
+        for c in config['board']:
+            boards.append({
+                'Board': get_value(c,'board'),
+                'Thread': get_value(c,'thread'),
+                'Path': None,
+                'Name': get_value(c, 'name'),
                 'Title': None,
                 'Last-Modified': None,
-                'Line': 0,
-                'Range': 0,
-                'ETag': None,
-                'Live': True,
+                'Line': 0, 'Range': 0, 'ETag': None, 'Live': False,
                 })
 
     # main routine
-    notify = get_value(config,'Notify')
+    notify = get_value(config,'notify')
+    bn = BearNotify()
     
     while True:
         messages = ""
         for t in threads:
+            if not t['Live']:
+                continue
+            
             message = visit_thread(t)
-            if message and _install_growl and notify == 'Growl':
-                notify_growl(t['Title'], message)
+            if message:
+                message_mail = "-------------------\n%s\n-------------------\n%s" % (t['Title'], message)
+            else:
+                continue
+                
+            if _is_growl_installed and notify == 'growl':
+                bn.notify(t['Title'], message)
+            elif notify == 'mail':
+                messages += message_mail
+            else:
+                print message_mail
 
         ni = Nichan()
-        for board in boards:
-            dat = ni.get_power_thread(board['Path'], board['Thread'].encode(_encoding))
-            print dat
+        messages = ""
+        for b in boards:
+            if not b['Live']:
+                dat_file = ni.get_power_thread(b['Board'], b['Thread'].encode(_encoding))
+                if dat_file:
+                    b['Path'] = ni.create_path_to_dat(b['Board'], dat_file)
+                    b['Last-Modified'] = None
+                    b['ETag'] = None
+                    b['Range'] = 0
+                    b['Line'] = 0
+                    b['Live'] = True
+                else:
+                    continue
+                    
+            message = visit_thread(b)
+            if message:
+                message_mail = "-------------------\n%s\n-------------------\n%s" % (b['Title'], message)
+            else:
+                continue
+
+            if _is_growl_installed and notify == 'growl':
+                bn.notify(b['Title'], message)
+            elif notify == 'mail':
+                messages += message_mail
+            else:
+                print message_mail
 
         # The message is sent with mail.
-        #if messages: send_mail(messages):
+        if messages and notify == 'Mail':
+            send_mail(messages)
                     
         logger.info("%d秒待機" % config['wait'])
         time.sleep(config['wait'])
-    
-def _test():
-    c = Nichan()
-    print c.get_power_thread("http://news21.2ch.net/slot/", "(ｽﾛ|スロ)板住民の(ﾈﾄﾗｼﾞ|ネトラジ).+隔離")
-    while True:
-        autopilot()
 
 if __name__ == '__main__':
-#     import textwrap
-#     wrapper = textwrap.TextWrapper(initial_indent=" 123", subsequent_indent="    ", width=20)
-#     print wrapper.fill(u"あいうえおかきくけこさしすせそたちつてとなにぬねの")
-
-#     a = u"あいうえおかきくけこさしすせそたちつてとなにぬねの"
-#     print a[:3], a[3:10]
-#     print "\n".join(wrapper.wrap("あいうえおかきくけこさしすせそたちつてとなにぬねの"))
-
-    autopilot()
+    run()

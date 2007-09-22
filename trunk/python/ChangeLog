@@ -1,3 +1,8 @@
+2007-09-22  Tadashi Inoue  <nrg27943@gmail.com>
+
+	* thread_bbs_checker.py (BearNotify): ver 0.3 作成
+	Growlで通知する機能を追加。config.yamlに、Notify種類の設定を追加。
+
 2007-09-21  Tadashi Inoue  <kenkiti@gmail.com>
 
 	* thread_bbs_checker.py: ver 0.2 作成
