@@ -8,7 +8,7 @@ from email.MIMEText import MIMEText
 from email.Header import Header
 from email.Utils import formatdate
 
-__version__ = "0.3" 
+__version__ = "0.1" 
 _encoding = "utf-8"
 
 try:
