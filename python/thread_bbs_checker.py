@@ -77,7 +77,7 @@ class Gmail:
 
 class ThreadBBS:
     Title = None
-    Header = {'User-Agent': 'Monazilla/1.00',
+    Header = {'User-Agent': 'Monazilla/1.00 (Palloo/Dev)',
               'Accept-Encoding': 'gzip'}
 
     Path = None
@@ -111,12 +111,12 @@ class ThreadBBS:
 class Jbbs(ThreadBBS):
     # Dat URL: http://jbbs.livedoor.jp/bbs/rawmode.cgi/(category)/(board_no)/(DAT-ID)/
     # CharCode: EUC-JP
-    # LineFormat: Number<>Name<>Mail<>Date(ID)<>Message<>Thread Title<>
+    # LineFormat: Number<>Name<>Mail<>Date(ID)<>Message<>Thread Title(exists in only first line)<>
     def _convert_path_to_dat_from_url(self, url):
-        if url[-3:] == "dat": return url
+        if url.count("rawmode.cgi") > 0: return url
         path = re.compile('http://(?P<host>[^\/]+)/([^\/]+)/([^\/]+)/(?P<category>[^\/]+)/(?P<board>[^\/]+)/(?P<datid>[^\/]+)/')
         m = path.search(url)
-        return "http://%s/bbs/rawmode.cgi/%s/%s/%s" % (
+        return "http://%s/bbs/rawmode.cgi/%s/%s/%s/" % (
             m.group('host'), m.group('category'), m.group('board'), m.group('datid'))
 
     def _convert_dat(self, dat):
@@ -147,7 +147,7 @@ class Jbbs(ThreadBBS):
         if not self.Path: return None
         url = self._convert_path_to_dat_from_url(self.Path)
         if int(self.Line) > 0:
-            url = "%s/%s-" % (url, self.Line)
+            url = "%s%s-" % (url, self.Line)
         header = self.Header.copy()
 
         (scheme, location, objpath, param, query, fid) = \
@@ -176,6 +176,8 @@ class Jbbs(ThreadBBS):
             self.Line = last_number
             if self.Line >= 1000 or response.status == 302 or response.status == 404:
                 self.Live = False
+            else:
+                self.Live = True
             return response.status, self._convert_dat(dat)
         else:
             return 304, None
@@ -187,6 +189,10 @@ class Jbbs(ThreadBBS):
         data = None
         header = self.Header.copy()
         url = urljoin(board_url, "subject.txt")
+        if keyword:
+            keyword = keyword.encode(_encoding)
+        else:
+            keyword = ""
 
         (scheme, location, objpath, param, query, fid) = \
                  urlparse.urlparse(url, 'http')
@@ -223,12 +229,18 @@ class Jbbs(ThreadBBS):
             return None
 
         power_list.sort(lambda x,y: cmp(y[1],x[1]))
-        return power_list[0][0][0]
+
+        #    http://jbbs.livedoor.jp/game/33247/ , 1190441589.cgi
+        # => http://jbbs.livedoor.jp/bbs/read.cgi/game/33247/1190441589/
+        path = re.compile('http://(?P<host>[^\/]+)/(?P<category>[^\/]+)/(?P<board>[^\/]+)/')
+        m = path.search(board_url)
+        return "http://%s/bbs/rawmode.cgi/%s/%s/%s/" % (
+            m.group('host'), m.group('category'), m.group('board'), power_list[0][0][0][:-4])
 
 class Nichan(ThreadBBS):
     # Dat URL: http://(host)/(board)/dat/(dat-id).dat
     # Char Code: Shift-jis
-    # Line Format: Name<>Mail<>Date、ID<>Message<>Thread Title(exist only first line.)
+    # Line Format: Name<>Mail<>Date、ID<>Message<>Thread Title(exists in only first line.)
 
     def _convert_path_to_dat_from_url(self, url):
         if url[-3:] == "dat": return url
@@ -236,9 +248,6 @@ class Nichan(ThreadBBS):
         m = path.search(url)
         return "http://%s/%s/dat/%s.dat" % (
             m.group('host'), m.group('board'), m.group('thread'))
-
-    def create_path_to_dat(self, board_url, dat_file):
-        return urljoin(board_url, "dat/%s" % dat_file)
 
     def _convert_dat(self, dat):
         dat = unicode(dat, 'cp932').encode(_encoding)
@@ -299,7 +308,9 @@ class Nichan(ThreadBBS):
         self.Line += dat.count("\n")
         if self.Line >= 1000:
             self.Live = False
-
+        else:
+            self.Live = True
+            
         return response.status, self._convert_dat(dat)
 
     def get_power_thread(self, board_url, keyword):
@@ -308,6 +319,10 @@ class Nichan(ThreadBBS):
         data = None
         header = self.Header.copy()
         url = urljoin(board_url, "subject.txt")
+        if keyword:
+            keyword = keyword.encode(_encoding)
+        else:
+            keyword = ""
 
         (scheme, location, objpath, param, query, fid) = \
                  urlparse.urlparse(url, 'http')
@@ -344,7 +359,7 @@ class Nichan(ThreadBBS):
             return None
 
         power_list.sort(lambda x,y: cmp(y[1],x[1]))
-        return power_list[0][0][0]
+        return urljoin(board_url, "dat/%s" % power_list[0][0][0])
 
 def AA_check(message):
     ## AA Check
@@ -369,12 +384,6 @@ def distinguish_bbs(path, last_modified=None, dat_range=0, line=0, live=True, et
     else:
         raise
 
-    bbs.Path = path
-    bbs.Live = live
-    bbs.ETag = etag
-    bbs.Last_Modified = last_modified
-    bbs.Range = dat_range
-    bbs.Line = line
     return bbs
 
 def visit_thread(t):
@@ -392,12 +401,13 @@ def visit_thread(t):
     flg_get_dat = False
     message = ""
 
-    bbs = distinguish_bbs(
-        path=t['Path'],
-        last_modified=t['Last-Modified'],
-        dat_range=t['Range'],
-        line=t['Line'], live=t['Live'], etag=t['ETag']
-        )
+    bbs = distinguish_bbs(t['Path'])
+    bbs.Path = t['Path']
+    bbs.Live = t['Live']
+    bbs.ETag = t['ETag']
+    bbs.Last_Modified = t['Last-Modified']
+    bbs.Range = t['Range']
+    bbs.Line = t['Line']
 
     status, dat = bbs.get(None)
     if bbs.Title:
@@ -412,20 +422,19 @@ def visit_thread(t):
         t['Line'] = bbs.Line
     t['Live'] = bbs.Live
 
-    # If Http Error '416 Requested Range Not Satisfiable' is happend, obtain thread data again.
+    # If Http Error '416 Requested Range Not Satisfiable' is happend,
+    # obtain thread data again.
     if status == 416:
         t['Last-Modified'] = None
         t['ETag'] = None
         t['Range'] = 0
         t['Line'] = 0
 
-    # The log message is displayed.
     logger.info("%s(%d):%s" % (status_message[status], t['Line'],  t['Title']))
-
     if flg_init_thread == True or flg_get_dat == False:
         return ""
 
-    # composes a message from data.
+    # Composes a message from data.
     if t['Name']:
         name = re.compile(t['Name'])
         for d in dat:
@@ -519,14 +528,14 @@ def run():
             else:
                 print message_mail
 
-        ni = Nichan()
         messages = ""
         for b in boards:
             if not b['Live']:
-                dat_file = ni.get_power_thread(b['Board'], b['Thread'].encode(_encoding))
+                bbs = distinguish_bbs(b['Board'])
+                dat_file = bbs.get_power_thread(b['Board'], b['Thread'])
                 if dat_file:
-                    logger.info("板から最も勢いのあるスレッドを取得:%s" % dat_file)
-                    b['Path'] = ni.create_path_to_dat(b['Board'], dat_file)
+                    logger.info("%sから最も勢いのあるスレッドを取得" % b['Board'])
+                    b['Path'] = dat_file
                     b['Last-Modified'] = None
                     b['ETag'] = None
                     b['Range'] = 0
@@ -557,3 +566,5 @@ def run():
 
 if __name__ == '__main__':
     run()
+
+
