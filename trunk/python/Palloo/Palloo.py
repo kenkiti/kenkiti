@@ -10,6 +10,7 @@ from email.Utils import formatdate
 
 __version__ = "0.1" 
 _encoding = "utf-8"
+_icon = "Domokun_Alert.icns"
 
 try:
     import Growl
@@ -24,9 +25,7 @@ class BearNotify:
         if _is_growl_installed:
             self._g = Growl.GrowlNotifier(
                 applicationName="Palloo", notifications=["stuff"],
-                #applicationIcon=Growl.Image.imageWithIconForFile(os.getcwd() + '/Domokun_Online.icns')
-                applicationIcon=Growl.Image.imageWithIconForFile(os.getcwd() + '/Polygon_bear')
-                #applicationIcon=Growl.Image.imageFromPath(os.getcwd() + '/mac03.gif')
+                applicationIcon=Growl.Image.imageWithIconForFile(os.path.join(os.getcwd(), _icon))
                 )
             self._g.register()
 
@@ -374,12 +373,15 @@ def distinguish_bbs(path, last_modified=None, dat_range=0, line=0, live=True, et
     search_2ch = re.compile('2ch\.net')
     search_jbbs = re.compile('jbbs\.livedoor\.jp')
     search_yykakiko = re.compile('yy\d+\.\d+\.kg')
+    search_yykakiko2 = re.compile('yy\d+\.kakiko.com')
 
     if search_2ch.search(path):
         bbs = Nichan()
     elif search_jbbs.search(path):
         bbs = Jbbs()
     elif search_yykakiko.search(path):
+        bbs = Nichan()
+    elif search_yykakiko2.search(path):
         bbs = Nichan()
     else:
         raise

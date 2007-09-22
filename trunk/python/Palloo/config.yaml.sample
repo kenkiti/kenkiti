@@ -4,12 +4,11 @@ password: password
 to_address: your-mobile-address@docomo.ne.jp
 notify: growl   # mail = 通知をメールで送信, growl = Growlを使って通知, None = コンソールに出力
 wait: 10
-thread:
+thread: # スレッドを直接指定
 - path: http://yy54.60.kg/test/read.cgi/jiko69/1188997016/
 - path: http://news21.2ch.net/test/read.cgi/slot/1190386650/
-board:
-- board: http://news21.2ch.net/slot/
-  thread: (スロ|ｽﾛ)板住民の(ネトラジ|ﾈﾄﾗｼﾞ).+隔離   # 読みたいスレッドを指定します(正規表現可)
+board: # 板の中から特定の文字列を含むスレッドを抽出し、その中で最も勢いのあるスレッドを監視
+- board: http://news21.2ch.net/slot/            # 板の指定
+  thread: (スロ|ｽﾛ)板住民の(ネトラジ|ﾈﾄﾗｼﾞ).+隔離   # 特定の文字列を含むスレッドを抽出
   Name: ehm.mesh.ne.jp                          # 特定のハンドルの書き込みのみ通知します
-- board: http://yy25.60.kg/peercastjikkyou/
-
+- board: http://yy25.60.kg/peercastjikkyou/     # 板の中で最も勢いのあるスレッドを監視します
