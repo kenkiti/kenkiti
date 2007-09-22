@@ -355,7 +355,7 @@ def AA_check(message):
     if counter > 25: message = "AA略"
     return message
 
-def distinguish_bbs(path, last_modified=None, dat_range=0, line=0, live, etag=None)
+def distinguish_bbs(path, last_modified=None, dat_range=0, line=0, live=True, etag=None):
     search_2ch = re.compile('2ch\.net')
     search_jbbs = re.compile('jbbs\.livedoor\.jp')
     search_yykakiko = re.compile('yy\d+\.\d+\.kg')
@@ -375,6 +375,7 @@ def distinguish_bbs(path, last_modified=None, dat_range=0, line=0, live, etag=No
     bbs.Last_Modified = last_modified
     bbs.Range = dat_range
     bbs.Line = line
+    return bbs
 
 def visit_thread(t):
     status_message = {
@@ -524,7 +525,7 @@ def run():
             if not b['Live']:
                 dat_file = ni.get_power_thread(b['Board'], b['Thread'].encode(_encoding))
                 if dat_file:
-                    logger.info("" % onfig['wait'])
+                    logger.info("板から最も勢いのあるスレッドを取得:%s" % dat_file)
                     b['Path'] = ni.create_path_to_dat(b['Board'], dat_file)
                     b['Last-Modified'] = None
                     b['ETag'] = None
