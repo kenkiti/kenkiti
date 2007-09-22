@@ -1,0 +1,15 @@
+# -*- coding: utf-8 -*-
+gmail_address: your-gmail-address@gmail.com
+password: password
+to_address: your-mobile-address@docomo.ne.jp
+notify: growl   # mail = 通知をメールで送信, growl = Growlを使って通知, None = コンソールに出力
+wait: 10
+thread:
+- path: http://yy54.60.kg/test/read.cgi/jiko69/1188997016/
+- path: http://news21.2ch.net/test/read.cgi/slot/1190386650/
+board:
+- board: http://news21.2ch.net/slot/
+  thread: (スロ|ｽﾛ)板住民の(ネトラジ|ﾈﾄﾗｼﾞ).+隔離   # 読みたいスレッドを指定します(正規表現可)
+  Name: ehm.mesh.ne.jp                          # 特定のハンドルの書き込みのみ通知します
+- board: http://yy25.60.kg/peercastjikkyou/
+
