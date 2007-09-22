@@ -75,44 +75,6 @@ class Gmail:
         s.sendmail(self.address, [to_addr], msg.as_string())
         s.close()
 
-class Reader:
-    bbs = None
-    
-    def set_thread(self, path=None, etag=None, last_modified=None, dat_range=None, line=0, live=True):
-        search_2ch = re.compile('2ch\.net')
-        search_jbbs = re.compile('jbbs\.livedoor\.jp')
-        search_yykakiko = re.compile('yy\d+\.\d+\.kg')
-
-        if search_2ch.search(path):
-            self.bbs = Nichan()
-        elif search_jbbs.search(path):
-            self.bbs = Jbbs()
-        elif search_yykakiko.search(path):
-            self.bbs = Nichan()
-        else:
-            raise
-
-        self.bbs.Path = path
-        self.bbs.Live = live
-        self.bbs.ETag = etag
-        self.bbs.Last_Modified = last_modified
-        self.bbs.Range = dat_range
-        self.bbs.Line = line
-
-    def get_thread(self):
-        return self.bbs.get(None)
-
-    def status_message(self, number):
-        messages = {
-            200:'スレ取得',
-            206:'差分取得',
-            302:'DAT落ち',
-            304:'更新なし',
-            404:'ファイルがないよ',
-            416:'なんかエラーだって(レスあぼーん)',
-            }
-        return messages[number]
-
 class ThreadBBS:
     Title = None
     Header = {'User-Agent': 'Monazilla/1.00',
@@ -218,6 +180,51 @@ class Jbbs(ThreadBBS):
         else:
             return 304, None
 
+    def get_power_thread(self, board_url, keyword):
+        """ The thread which is include keyword and
+        the most power in the bulliten board is returned."""
+        # Format of subject.txt: (DAT-ID).cgi,(Title)#(181)
+        data = None
+        header = self.Header.copy()
+        url = urljoin(board_url, "subject.txt")
+
+        (scheme, location, objpath, param, query, fid) = \
+                 urlparse.urlparse(url, 'http')
+        con = httplib.HTTPConnection(location)
+        con.request('GET', objpath, data, header)
+        response = con.getresponse()
+
+        dat = response.read()
+        if response.getheader('Content-Encoding', None)=='gzip':
+            gzfile = StringIO.StringIO(dat)
+            gzstream = gzip.GzipFile(fileobj=gzfile)
+            dat = gzstream.read()
+
+        num = re.compile("\((\d+?)\)$")
+        key = re.compile(keyword)
+        now = datetime.datetime.now()
+        power_list = []
+        for line in dat.strip("\n").split("\n"):
+            line = line.split(",")
+
+            title = unicode(line[1], "euc-jp", "ignore").encode(_encoding)
+            count = num.search(title).group(1)
+            if int(count) == 1000:
+                continue
+
+            if not key.search(title):
+                continue
+
+            create_date = self._dat2time(line[0])
+            power = float(count) / self._timedelta(now, create_date)
+            power_list.append((line, power))
+
+        if not power_list:
+            return None
+
+        power_list.sort(lambda x,y: cmp(y[1],x[1]))
+        return power_list[0][0][0]
+
 class Nichan(ThreadBBS):
     # Dat URL: http://(host)/(board)/dat/(dat-id).dat
     # Char Code: Shift-jis
@@ -300,7 +307,7 @@ class Nichan(ThreadBBS):
         the most power in the bulliten board is returned."""
         data = None
         header = self.Header.copy()
-        url = board_url + "subject.txt"
+        url = urljoin(board_url, "subject.txt")
 
         (scheme, location, objpath, param, query, fid) = \
                  urlparse.urlparse(url, 'http')
@@ -329,7 +336,6 @@ class Nichan(ThreadBBS):
             if not key.search(title):
                 continue
 
-            print title
             create_date = self._dat2time(line[0])
             power = float(count) / self._timedelta(now, create_date)
             power_list.append((line, power))
@@ -340,7 +346,6 @@ class Nichan(ThreadBBS):
         power_list.sort(lambda x,y: cmp(y[1],x[1]))
         return power_list[0][0][0]
 
-
 def AA_check(message):
     ## AA Check
     counter = 0
@@ -350,43 +355,71 @@ def AA_check(message):
     if counter > 25: message = "AA略"
     return message
 
+def distinguish_bbs(path, last_modified=None, dat_range=0, line=0, live, etag=None)
+    search_2ch = re.compile('2ch\.net')
+    search_jbbs = re.compile('jbbs\.livedoor\.jp')
+    search_yykakiko = re.compile('yy\d+\.\d+\.kg')
+
+    if search_2ch.search(path):
+        bbs = Nichan()
+    elif search_jbbs.search(path):
+        bbs = Jbbs()
+    elif search_yykakiko.search(path):
+        bbs = Nichan()
+    else:
+        raise
+
+    bbs.Path = path
+    bbs.Live = live
+    bbs.ETag = etag
+    bbs.Last_Modified = last_modified
+    bbs.Range = dat_range
+    bbs.Line = line
+
 def visit_thread(t):
-    reader = Reader()
+    status_message = {
+        200:'スレ取得',
+        206:'差分取得',
+        302:'DAT落ち',
+        304:'更新なし',
+        404:'ファイルがないよ',
+        416:'なんかエラーだって',
+        }
     logger = Logger()
     
     flg_init_thread = False
     flg_get_dat = False
     message = ""
 
-    reader.set_thread(
+    bbs = distinguish_bbs(
         path=t['Path'],
         last_modified=t['Last-Modified'],
         dat_range=t['Range'],
         line=t['Line'], live=t['Live'], etag=t['ETag']
         )
 
-    status, dat = reader.get_thread()
-    if reader.bbs.Title:
+    status, dat = bbs.get(None)
+    if bbs.Title:
         flg_init_thread = True
-        t['Title'] = reader.bbs.Title
+        t['Title'] = bbs.Title
 
     if status == 200 or status == 206:
         flg_get_dat = True
-        t['Last-Modified'] = reader.bbs.Last_Modified
-        t['ETag'] = reader.bbs.ETag
-        t['Range'] = reader.bbs.Range
-        t['Line'] = reader.bbs.Line
-    t['Live'] = reader.bbs.Live
+        t['Last-Modified'] = bbs.Last_Modified
+        t['ETag'] = bbs.ETag
+        t['Range'] = bbs.Range
+        t['Line'] = bbs.Line
+    t['Live'] = bbs.Live
 
+    # If Http Error '416 Requested Range Not Satisfiable' is happend, obtain thread data again.
     if status == 416:
-        # sure saisyutoku
         t['Last-Modified'] = None
         t['ETag'] = None
         t['Range'] = 0
         t['Line'] = 0
 
     # The log message is displayed.
-    logger.info("%s(%d):%s" % (reader.status_message(status), t['Line'],  t['Title']))
+    logger.info("%s(%d):%s" % (status_message[status], t['Line'],  t['Title']))
 
     if flg_init_thread == True or flg_get_dat == False:
         return ""
@@ -397,11 +430,9 @@ def visit_thread(t):
         for d in dat:
             if not name.search(d['name']):
                 continue
-            #message += "\n%d %s" % (d['number'], AA_check(d['message']))
             message += text_wrapper(d['number'], AA_check(d['message']))
     else:
         for d in dat:
-            #message += "\n%d %s" % (d['number'], AA_check(d['message']))
             message += text_wrapper(d['number'], AA_check(d['message']))
     logger.info('最終書込:%s レス取得数:%d' % (dat[-1]['date'], len(dat)))
     if message == "": return ""
@@ -493,6 +524,7 @@ def run():
             if not b['Live']:
                 dat_file = ni.get_power_thread(b['Board'], b['Thread'].encode(_encoding))
                 if dat_file:
+                    logger.info("" % onfig['wait'])
                     b['Path'] = ni.create_path_to_dat(b['Board'], dat_file)
                     b['Last-Modified'] = None
                     b['ETag'] = None
