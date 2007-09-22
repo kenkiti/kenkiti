@@ -1,5 +1,5 @@
 #! -*- coding: utf-8 -*-
-import sys, yaml, datetime, time
+import os, sys, yaml, datetime, time
 import httplib, urlparse, re, gzip, StringIO
 
 import smtplib
@@ -7,8 +7,32 @@ from email.MIMEText import MIMEText
 from email.Header import Header
 from email.Utils import formatdate
 
-_VERSION = "0.2"
-ENCODING = "utf-8"
+__version__ = "0.3" 
+_encoding = "utf-8"
+
+try:
+    import Growls
+    _is_growl_installed = True
+except ImportError:
+    _is_growl_installed = False
+
+class BearNotify:
+    _g = None
+    def __init__(self):
+        if _is_growl_installed:
+            self._g = Growl.GrowlNotifier(
+                applicationName="Palloo", notifications=["stuff"],
+                #applicationIcon=Growl.Image.imageWithIconForFile(os.getcwd() + '/Domokun_Online.icns')
+                applicationIcon=Growl.Image.imageWithIconForFile(os.getcwd() + '/Polygon_bear')
+                #applicationIcon=Growl.Image.imageFromPath(os.getcwd() + '/mac03.gif')
+                )
+            self._g.register()
+
+    def notify(self, title, message):
+        if _is_growl_installed:
+            self._g.notify(noteType="stuff", title=title, description=message, sticky=False)
+        else:
+            print "%s\n%s" % (title, message)
 
 class Logger:
     def _now(self):
@@ -132,7 +156,7 @@ class Jbbs(ThreadBBS):
             m.group('host'), m.group('category'), m.group('board'), m.group('datid'))
 
     def _convert_dat(self, dat):
-        dat = unicode(dat, 'euc-jp', 'ignore').encode(ENCODING)
+        dat = unicode(dat, 'euc-jp', 'ignore').encode(_encoding)
         dat = dat.strip("\n").split("\n")[1:]
         ret = []
         for line in dat:
@@ -143,13 +167,13 @@ class Jbbs(ThreadBBS):
         return  ret
 
     def _get_title(self, dat):
-        dat = unicode(dat, 'euc-jp', 'ignore').encode(ENCODING)
+        dat = unicode(dat, 'euc-jp', 'ignore').encode(_encoding)
         line = dat.strip("\n").split("\n")[0]
         num, name, mail, date, message, title, null = line.split("<>")
         return title
 
     def _get_last_number(self, dat):
-        dat = unicode(dat, 'euc-jp','ignore').encode(ENCODING)
+        dat = unicode(dat, 'euc-jp','ignore').encode(_encoding)
         dat = dat.strip("\n").split("\n")
         line = dat[-1:][0]
         num, name, mail, date, message, title, null = line.split("<>")
@@ -204,7 +228,7 @@ class Nichan(ThreadBBS):
             m.group('host'), m.group('board'), m.group('thread'))
 
     def _convert_dat(self, dat):
-        dat = unicode(dat, 'cp932').encode(ENCODING)
+        dat = unicode(dat, 'cp932').encode(_encoding)
         dat = dat.strip("\n").split("\n")
         res = []
         number = self.Line - len(dat)
@@ -217,7 +241,7 @@ class Nichan(ThreadBBS):
         return res
 
     def _get_title(self, dat):
-        dat = unicode(dat, 'cp932').encode(ENCODING)
+        dat = unicode(dat, 'cp932').encode(_encoding)
         line = dat.strip("\n").split("\n")[0]
         name, mail, date, message, title = line.split("<>")
         return title
@@ -291,7 +315,7 @@ class Nichan(ThreadBBS):
         for line in dat.strip("\n").split("\n"):
             line = line.split("<>")
 
-            title = unicode(line[1], "cp932", "ignore").encode(ENCODING)
+            title = unicode(line[1], "cp932", "ignore").encode(_encoding)
             count = num.search(title).group(1)
             if int(count) == 1001:
                 continue
@@ -310,6 +334,15 @@ class Nichan(ThreadBBS):
         power_list.sort(lambda x,y: cmp(y[1],x[1]))
         return power_list[0][0][0]
 
+
+def AA_check(message):
+    ## AA Check
+    counter = 0
+    aas = [":", ";", ".", "?", "&", "━", "┃", "(", ")", "／", "ノ", "＼", "|","ヽ","─"]
+    for aa in aas:
+        counter += message.count(aa)
+    if counter > 25: message = "AA略"
+    return message
 
 def visit_thread(t):
     reader = Reader()
@@ -344,10 +377,14 @@ def visit_thread(t):
     t['Live'] = reader.bbs.Live
 
     if status == 416:
+        # sure saisyutoku
+        t['Last-Modified'] = None
+        t['ETag'] = None
         t['Range'] = 0
+        t['Line'] = 0
 
     # The log message is displayed.
-    logger.info("%s:%s" % (reader.status_message(status), t['Title']))
+    logger.info("%s(%d):%s" % (reader.status_message(status), t['Line'],  t['Title']))
 
     if flg_init_thread == True or flg_get_dat == False:
         return ""
@@ -358,15 +395,27 @@ def visit_thread(t):
         for d in dat:
             if not name.search(d['name']):
                 continue
-            message += "\n%d %s" % (d['number'], d['message'])
+            #message += "\n%d %s" % (d['number'], AA_check(d['message']))
+            message += text_wrapper(d['number'], AA_check(d['message']))
     else:
         for d in dat:
-            message += "\n%d %s" % (d['number'], d['message'])
+            #message += "\n%d %s" % (d['number'], AA_check(d['message']))
+            message += text_wrapper(d['number'], AA_check(d['message']))
     logger.info('最終書込:%s レス取得数:%d' % (dat[-1]['date'], len(dat)))
     if message == "": return ""
-    return "-------------------\n%s\n-------------------\n%s" % (t['Title'], message)
 
-def send_mail(message):
+    #message = "-------------------\n%s\n-------------------\n%s" % (title, message)
+    return message
+
+def text_wrapper(number, message):
+#     import textwrap
+#     wrapper = textwrap.TextWrapper(initial_indent="%4d " % number, subsequent_indent=" "*7, width=20)
+#     s = wrapper.fill(unicode(message,"utf-8")) + "\n"
+#     print s
+#     return s
+    return "\n%d %s" % (number, message)
+
+def send_mail(title, message):
     config = Config().load()
     logger = Logger()
 
@@ -374,7 +423,7 @@ def send_mail(message):
     mail.address = config['gmail_address']
     mail.password = config['password']
     subject = u'新着レスがあります'.encode('ISO-2022-JP', 'ignore')
-    message = unicode(message, ENCODING).encode('ISO-2022-JP', 'ignore')
+    message = unicode(message, _encoding).encode('ISO-2022-JP', 'ignore')
     try:
         mail.send_mail(config['to_address'], subject, message)
     except:
@@ -396,10 +445,11 @@ def autopilot():
 
     if config.has_key('board'):
         for c in config['board']:
+            print config['board']
             boards.append({
                 'Path': c['Path'],
                 'Name': get_value(c, 'Name'),
-                'Keyword': get_value(c,'Keyword'),
+                'Thread': get_value(c,'Thread'),
                 'Title': None,
                 'Last-Modified': None,
                 'Line': 0, 'Range': 0, 'ETag': None, 'Live': True,
@@ -419,14 +469,18 @@ def autopilot():
                 })
 
     # main routine
+    notify = get_value(config,'Notify')
+    
     while True:
         messages = ""
         for t in threads:
-            messages += visit_thread(t)
+            message = visit_thread(t)
+            if message and _install_growl and notify == 'Growl':
+                notify_growl(t['Title'], message)
 
         ni = Nichan()
         for board in boards:
-            dat = ni.get_power_thread(board['Path'], board['Keyword'].encode(ENCODING))
+            dat = ni.get_power_thread(board['Path'], board['Thread'].encode(_encoding))
             print dat
 
         # The message is sent with mail.
@@ -442,4 +496,12 @@ def _test():
         autopilot()
 
 if __name__ == '__main__':
+#     import textwrap
+#     wrapper = textwrap.TextWrapper(initial_indent=" 123", subsequent_indent="    ", width=20)
+#     print wrapper.fill(u"あいうえおかきくけこさしすせそたちつてとなにぬねの")
+
+#     a = u"あいうえおかきくけこさしすせそたちつてとなにぬねの"
+#     print a[:3], a[3:10]
+#     print "\n".join(wrapper.wrap("あいうえおかきくけこさしすせそたちつてとなにぬねの"))
+
     autopilot()
