@@ -7,8 +7,8 @@ class TestRakuten < Test::Unit::TestCase
   attr_accessor :username, :password
 
   def setup
-    @username = "kenkiti_rakuten"
-    @password = "kenkitii"
+    @username = "あなたのユーザーID"
+    @password = "あなたのパスワード"
   end
 
   def test_login
