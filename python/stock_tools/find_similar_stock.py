@@ -13,8 +13,10 @@ class Storage(dict):
         if self.has_key(key): 
             return self[key]
         raise AttributeError, repr(key)
+
     def __setattr__(self, key, value): 
         self[key] = value
+
     def __repr__(self):     
         return '<Storage ' + dict.__repr__(self) + '>'
 
@@ -89,7 +91,6 @@ class Downloader:
                 break
 
 class Stocks(dict):
-
     def __init__(self, path):
         self.path_to_dat = path
         self._make_dict()
