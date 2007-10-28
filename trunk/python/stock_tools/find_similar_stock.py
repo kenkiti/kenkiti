@@ -128,9 +128,9 @@ class Stocks(dict):
 def correlation(xs, ys):
     avgx = sum(xs) / float(len(ys))
     avgy = sum(ys) / float(len(ys))
-    l = reduce(float.__add__, [(x - avgx) * (y - avgy) for x, y in zip(xs, ys)])
-    m = reduce(float.__add__, [(x - avgx) ** 2 for x in xs])
-    n = reduce(float.__add__, [(y - avgy) ** 2 for y in ys])
+    l = sum([(x - avgx) * (y - avgy) for x, y in zip(xs, ys)])
+    m = sum([(x - avgx) ** 2 for x in xs])
+    n = sum([(y - avgy) ** 2 for y in ys])
     return l / (math.sqrt(m) * math.sqrt(n))
 
 def main(code):
