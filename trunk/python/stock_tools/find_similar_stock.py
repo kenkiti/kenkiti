@@ -87,12 +87,14 @@ class Downloader:
             if csvfile in os.listdir(self.path_to_dat):
                 counter += 1
 
-            if counter >= 25:
+            if counter >= 60:
                 break
 
 class Stocks(dict):
-    def __init__(self, path):
+    def __init__(self, path, days=25, before=0):
         self.path_to_dat = path
+        self.days = days
+        self.before = before
         self._make_dict()
 
     def _make_dict(self):
@@ -102,7 +104,9 @@ class Stocks(dict):
 
         csvfiles = os.listdir(self.path_to_dat)
         csvfiles.sort()
-        csvfiles = csvfiles[-25:]
+        s = -1 * self.days - self.before
+        e = len(csvfiles) - self.before
+        csvfiles = csvfiles[s:e]
 
         for csvfile in csvfiles:
             stream = file(os.path.join(self.path_to_dat, csvfile), "rb")
@@ -110,20 +114,25 @@ class Stocks(dict):
                 description = unicode(line[3][5:], 'cp932').encode('utf-8')
 
                 if self.has_key(int(line[1])):
-                    self[int(line[1])].closing_price.append(int(line[4]))
-                    self[int(line[1])].volume.append(float(line[8]))
+                    self[int(line[1])].opening_prices.append(int(line[4]))
+                    self[int(line[1])].high_prices.append(int(line[5]))
+                    self[int(line[1])].low_prices.append(int(line[6]))
+                    self[int(line[1])].closing_prices.append(int(line[7]))
+                    self[int(line[1])].volumes.append(float(line[8]))
+                    self[int(line[1])].filenames.append(csvfile)
                 else:
                     self[int(line[1])] = Storage({
                         'description': unicode(line[3][5:],'cp932').encode('utf-8'),
-                        #'opening_price': [int(line[4])],
-                        #'high_price': [int(line[5])],
-                        #'low_price': [int(line[6])],
-                        'closing_price': [int(line[7])],
-                        'volume': [float(line[8])],
+                        'opening_prices': [int(line[4])],
+                        'high_prices': [int(line[5])],
+                        'low_prices': [int(line[6])],
+                        'closing_prices': [int(line[7])],
+                        'volumes': [float(line[8])],
+                        'filenames': [csvfile],
                         })
 
         for k, v in self.items():
-            if len(v.closing_price) != 25:
+            if len(v.closing_prices) != self.days:
                 del self[k]
 
 def correlation(xs, ys):
@@ -132,7 +141,10 @@ def correlation(xs, ys):
     l = sum([(x - avgx) * (y - avgy) for x, y in zip(xs, ys)])
     m = sum([(x - avgx) ** 2 for x in xs])
     n = sum([(y - avgy) ** 2 for y in ys])
-    return l / (math.sqrt(m) * math.sqrt(n))
+    if m == 0 or n ==0:
+        return 0
+    else:
+        return l / (math.sqrt(m) * math.sqrt(n))
 
 def main(code):
     stock = Stocks(PATH_TO_DAT)
@@ -140,17 +152,17 @@ def main(code):
         print >>sys.stderr, "%i is not found." % code
         error_message()
 
-    target = stock[code].closing_price
+    target = stock[code].closing_prices
     results = []
     for k, v in stock.items():
         if k == code:
             continue
-        results.append((k, correlation(target, v.closing_price)))
+        results.append((k, correlation(target, v.closing_prices)))
     results.sort(lambda x, y: cmp(y[1] ,x[1]))
 
     for x, y in results[:10]:
         print x, stock[x].description, y
-    
+
 def error_message():
     print >>sys.stderr, "Usage: find_similar_stock.py [code]"
     sys.exit(1)
