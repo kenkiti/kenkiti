@@ -139,6 +139,8 @@ class Jbbs(ThreadBBS):
         dat = unicode(dat, 'euc-jp','ignore').encode(_encoding)
         dat = dat.strip("\n").split("\n")
         line = dat[-1:][0]
+        if line == None:
+            return 0
         num, name, mail, date, message, title, null = line.split("<>")
         return int(num)
 
@@ -282,11 +284,14 @@ class Nichan(ThreadBBS):
             # remove 'Accept-Encoding: gzip' from header.
             del header['Accept-Encoding']
 
-        (scheme, location, objpath, param, query, fid) = \
-                 urlparse.urlparse(url, 'http')
-        con = httplib.HTTPConnection(location)
-        con.request('GET', objpath, data, header)
-        response = con.getresponse()
+        try:
+            (scheme, location, objpath, param, query, fid) = \
+                     urlparse.urlparse(url, 'http')
+            con = httplib.HTTPConnection(location)
+            con.request('GET', objpath, data, header)
+            response = con.getresponse()
+        except:
+            return None, None
         self.Last_Modified = response.getheader('Last-Modified', None)
         self.ETag = response.getheader('ETag', None)
 
@@ -412,6 +417,10 @@ def visit_thread(t):
     bbs.Line = t['Line']
 
     status, dat = bbs.get(None)
+    if not status:
+        logger.info('なんかエラーだって')
+        return 'なんかエラーだって'
+
     if bbs.Title:
         flg_init_thread = True
         t['Title'] = bbs.Title
@@ -437,6 +446,7 @@ def visit_thread(t):
         return ""
 
     # Composes a message from data.
+    # print "[%s]" % t['Name'] # debug
     if t['Name']:
         name = re.compile(t['Name'])
         for d in dat:
@@ -452,9 +462,9 @@ def visit_thread(t):
     return message
 
 def text_wrapper(number, message):
-#     import textwrap
-#     wrapper = textwrap.TextWrapper(initial_indent="%4d " % number, subsequent_indent=" "*7, width=30)
-#     return wrapper.fill(unicode(message,"utf-8")) + "\n"
+    # import textwrap
+    # wrapper = textwrap.TextWrapper(initial_indent="%4d " % number, subsequent_indent=" "*7, width=30)
+    # return wrapper.fill(unicode(message,"utf-8")) + "\n"
     return "\n%d %s" % (number, message)
 
 def send_mail(title, message):
@@ -485,7 +495,7 @@ def run():
     logger = Logger()
     boards, threads = [], []
 
-    if config.has_key('thread'):
+    if config.has_key('thread') and config['thread']:
         for c in config['thread']:
             threads.append({
                 'Path': c['path'],
@@ -494,8 +504,7 @@ def run():
                 'Last-Modified': None,
                 'Line': 0, 'Range': 0, 'ETag': None, 'Live': True,
                 })
-
-    if config.has_key('board'):
+    if config.has_key('board') and config['board']:
         for c in config['board']:
             boards.append({
                 'Board': get_value(c,'board'),
