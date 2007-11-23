@@ -1,0 +1,5 @@
+boards:
+# - board: http://live25.2ch.net/stock/ # 株板
+#   keyword: 日経平均
+- board: http://ex23.2ch.net/livemarket1/ # 市況１
+  keyword: 【\d{4}
