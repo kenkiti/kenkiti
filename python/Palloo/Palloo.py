@@ -251,7 +251,7 @@ class Nichan(ThreadBBS):
             m.group('host'), m.group('board'), m.group('thread'))
 
     def _convert_dat(self, dat):
-        dat = unicode(dat, 'cp932').encode(_encoding)
+        dat = unicode(dat, 'cp932','ignore').encode(_encoding)
         dat = dat.strip("\n").split("\n")
         res = []
         number = self.Line - len(dat)
@@ -264,7 +264,7 @@ class Nichan(ThreadBBS):
         return res
 
     def _get_title(self, dat):
-        dat = unicode(dat, 'cp932').encode(_encoding)
+        dat = unicode(dat, 'cp932','ignore').encode(_encoding)
         line = dat.strip("\n").split("\n")[0]
         name, mail, date, message, title = line.split("<>")
         return title
