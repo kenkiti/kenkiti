@@ -31,7 +31,7 @@ rss = RSS::Maker.make("2.0") do |maker|
   
   items_amazon.each_with_index do |ama, i|
     t = ama[1].to_s.sub('Amazon.co.jp： ', '').to_s.toutf8
-    l = "http://www.amazon.co.jp/exec/obidos/ASIN/#{ama[0]}/progrmustgoon-22" 
+    l = "http://www.amazon.co.jp/exec/obidos/ASIN/#{ama[0]}/progrmustgoon-22/ref=nosim"
 
     item = maker.items.new_item
     item.title = t
