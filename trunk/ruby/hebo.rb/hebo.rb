@@ -8,6 +8,7 @@
 require 'erb'
 require 'rubygems'
 require 'rack'
+require 'pstore'
 
 module Hebo
 
@@ -79,6 +80,8 @@ module Hebo
     end
 
     def parse_request(req)
+      @debug = Dir.pwd
+      # @debug = req.inspect
       r = req.path_info.split("/")
       r = r.select {|x| x != File.basename(__FILE__) }
       return ['index'] if r.empty?

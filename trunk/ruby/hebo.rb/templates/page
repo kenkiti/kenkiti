@@ -1,0 +1,25 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html lang="ja">
+<head>
+<meta http-equiv="content-type" content="text/html; charset=<%= @charset %>">
+<meta http-equiv="content-style-type" content="text/css">
+<base href="#{@absolute_url}">
+<style type="text/css"><!--
+body{font-family:Verdana,sans-serif;margin:2% 20% 10% 20%;color:black;background-color:white;}
+input{font-family:Verdana,sans-serif;}
+#navi{text-align:right;}
+p{line-height:150%;}
+a{color:gray;background-color:white;text-decoration:none;}
+a:hover{text-decoration:underline;color:white;background-color:gray;}
+--></style>
+<title><%= @title %> - Tropy</title>
+</head>
+<body>
+
+<p id="navi"><a href="create">create</a> <a href="index">random</a></p>
+<h1><%= @title %></h1>
+
+<p><%= @body %></p>
+<!-- <p><%= @debug %></p> -->
+
+</div></body></html>

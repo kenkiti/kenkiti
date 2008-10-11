@@ -1,0 +1,7 @@
+AddHandler cgi-script rb
+
+RewriteEngine On
+RewriteBase /hebopy
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^(.*)$ hebopy.rb/$1 [QSA,L]
+
