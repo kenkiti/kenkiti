@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# Created: 
 # Author: kenkiti (INOUE Tadashi)
 # $Id$
 require 'kconv'
