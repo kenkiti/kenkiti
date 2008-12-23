@@ -91,10 +91,11 @@ if $0 == __FILE__
   
   begin
     parser.parse!(ARGV)
-    AmebloDownloader.get(opt[:url], opt[:path])
   rescue OptionParser::ParseError => e
     $stderr.puts e.message
     $stderr.puts parser.help
     exit 1
+  else
+    AmebloDownloader.get(opt[:url], opt[:path])
   end
 end
