@@ -35,7 +35,7 @@ class AmebloDownloader
   def get_page(uri, reffer=nil)
     @agent.get(uri, reffer)
   rescue TimeoutError
-    @agent.log.warn '接続自体がタイムアウトしました'; nil
+    @agent.log.warn 'Connection timeout.'; nil
   rescue WWW::Mechanize::ResponseCodeError => e
     @agent.log.warn "#{e.message} #{uri}"; nil
   else
