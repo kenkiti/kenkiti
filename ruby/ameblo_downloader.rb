@@ -98,9 +98,3 @@ if $0 == __FILE__
     exit 1
   end
 end
-
-# uri = "http://ameblo.jp/hoshino--aki/page-770.html"
-# AmebloDownloader.get(uri, "hoshino0")
-
-# uri = "http://ameblo.jp/naocangogo/"
-# AmebloDownloader.get(uri, "naocangogo")
